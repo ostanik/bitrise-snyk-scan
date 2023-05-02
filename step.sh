@@ -16,49 +16,59 @@ function bashversion() {
     echo "$new_bash"
 }
 
-# for swift and objective-c
+# Installs cocoapods via gem
+function install_pods_via_gem() {
+    echo "--- Installing cocoapods via gem"
+    gem install cocoapods --user-install
+    cd "$(dirname "$PODFILE_PATH")"
+    pod install
+}
+
+# Installs cocoapods via bundle
+function install_pods_via_bundler() {
+    echo "--- Installing cocoapods via bundle"
+    cd "$(dirname "$GEMFILE_PATH")"
+    bundle install
+    bundle exec pod install
+}
+
+# Runs iOS dependency scan
 function snykscannerios-run() {
+    # Set up environment variables
     export GEM_HOME=$HOME/.gem
     ruby_version="$(gem env | grep .gem/ruby | sed 's:.*.gem/::' | head -1)"
     export PATH=$GEM_HOME/${ruby_version}/bin:$PATH
 
+    # Find Gemfile and Podfile paths
     GEMFILE_PATH=$(find "${project_directory}" -maxdepth 2 -type f -name "Gemfile" | head -1)
     PODFILE_PATH=$(find "${project_directory}" -maxdepth 2 -type f -name "Podfile" | head -1)
 
+    # Install cocoapods
     if [[ -n "$PODFILE_PATH" ]]; then
         if [[ -z "$GEMFILE_PATH" ]]; then
-            echo "No Gemfile found"
-            gem install cocoapods --user-install
-            cd "$(dirname "$PODFILE_PATH")"
-            pod install
+            # If only Podfile is present, install via gem
+            install_pods_via_gem
         else
-            GEMFILE_DIR=$(dirname "$GEMFILE_PATH")
-            cd "${GEMFILE_DIR}"
+            # If both Gemfile and Podfile are present, check Gemfile for cocoapods and install accordingly
             if grep -q "cocoapods" Gemfile; then
-                echo "cocoapods is already a dependency in the Gemfile"
+                install_pods_via_bundler
             else
-                gem install cocoapods --user-install
-            fi
-            if grep -q "pod '" Gemfile.lock; then
-                echo "Found Podfile as a dependency in Gemfile, running bundle and pod install"
-                bundle install
-                bundle exec pod install
-            else
-                echo "No Podfile found in Gemfile dependencies"
+                install_pods_via_gem
             fi
         fi
     elif [[ -n "$GEMFILE_PATH" ]]; then
-        GEMFILE_DIR=$(dirname "$GEMFILE_PATH")
-        cd "${GEMFILE_DIR}"
+        # If only Gemfile is present, check Gemfile for cocoapods and install accordingly
         if grep -q "cocoapods" Gemfile; then
-            echo "cocoapods is already a dependency in the Gemfile"
+            install_pods_via_bundler
+        else
             bundle install
-            bundle exec pod install
         fi
     else
+        # If neither Gemfile nor Podfile are present, output an error message
         echo "No Gemfile or Podfile found"
     fi
 
+    # Run snyk scan
     cd "${CODEFOLDER}"
     echo "--- Running iOS dependency scan"
     ./snyk test --all-projects --severity-threshold=${severity_threshold}
