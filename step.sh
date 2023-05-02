@@ -16,6 +16,20 @@ function bashversion() {
     echo "$new_bash"
 }
 
+# Install Swift Packages
+function build_packages() {
+  # Find all directories containing Package.swift files
+  package_dirs=$(find . -name Package.swift -exec dirname {} \;)
+
+  # Build each package in its respective directory
+  for dir in $package_dirs; do
+    echo "Building package in directory: $dir"
+    cd $dir
+    swift build
+    cd - > /dev/null
+  done
+}
+
 # Installs cocoapods via gem
 function install_pods_via_gem() {
     echo "--- Installing cocoapods via gem"
@@ -50,7 +64,7 @@ function snykscannerios-run() {
             install_pods_via_gem
         else
             # If both Gemfile and Podfile are present, check Gemfile for cocoapods and install accordingly
-            if grep -q "cocoapods" Gemfile; then
+            if grep -q "cocoapods" "$(dirname "$GEMFILE_PATH")/Gemfile"; then
                 install_pods_via_bundler
             else
                 install_pods_via_gem
@@ -70,6 +84,10 @@ function snykscannerios-run() {
 
     # Run snyk scan
     cd "${CODEFOLDER}"
+
+    echo "--- Building Swift Packages"
+    build_packages
+
     echo "--- Running iOS dependency scan"
     ./snyk test --all-projects --severity-threshold=${severity_threshold}
 }
