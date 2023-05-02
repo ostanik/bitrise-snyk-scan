@@ -22,11 +22,44 @@ function snykscannerios-run() {
     ruby_version="$(gem env | grep .gem/ruby | sed 's:.*.gem/::' | head -1)"
     export PATH=$GEM_HOME/${ruby_version}/bin:$PATH
 
-    gem install cocoapods --user-install    
-    pod install --project-directory=${project_directory} # for podfile
+    GEMFILE_PATH=$(find "${project_directory}" -maxdepth 2 -type f -name "Gemfile" | head -1)
+    PODFILE_PATH=$(find "${project_directory}" -maxdepth 2 -type f -name "Podfile" | head -1)
 
-    bundle install # for gemfile
+    if [[ -n "$PODFILE_PATH" ]]; then
+        if [[ -z "$GEMFILE_PATH" ]]; then
+            echo "No Gemfile found"
+            gem install cocoapods --user-install
+            cd "$(dirname "$PODFILE_PATH")"
+            pod install
+        else
+            GEMFILE_DIR=$(dirname "$GEMFILE_PATH")
+            cd "${GEMFILE_DIR}"
+            if grep -q "cocoapods" Gemfile; then
+                echo "cocoapods is already a dependency in the Gemfile"
+            else
+                gem install cocoapods --user-install
+            fi
+            if grep -q "pod '" Gemfile.lock; then
+                echo "Found Podfile as a dependency in Gemfile, running bundle and pod install"
+                bundle install
+                bundle exec pod install
+            else
+                echo "No Podfile found in Gemfile dependencies"
+            fi
+        fi
+    elif [[ -n "$GEMFILE_PATH" ]]; then
+        GEMFILE_DIR=$(dirname "$GEMFILE_PATH")
+        cd "${GEMFILE_DIR}"
+        if grep -q "cocoapods" Gemfile; then
+            echo "cocoapods is already a dependency in the Gemfile"
+            bundle install
+            bundle exec pod install
+        fi
+    else
+        echo "No Gemfile or Podfile found"
+    fi
 
+    cd "${CODEFOLDER}"
     echo "--- Running iOS dependency scan"
     ./snyk test --all-projects --severity-threshold=${severity_threshold}
 }
